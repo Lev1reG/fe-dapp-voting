@@ -1,11 +1,20 @@
 "use client";
 
 import { useEffect, useState } from "react";
-// import { useAccount, useConnect, useDisconnect, useSigner } from "wagmi";
-import { useAccount, useConnect, useDisconnect } from "wagmi";
-import { ethers } from "ethers";
-// import VotingABI from "../contract/Voting.json";
+import {
+  useAccount,
+  //   useReadContract,
+  useWriteContract,
+  useTransactionReceipt,
+} from "wagmi";
+import { ConnectButton } from "@rainbow-me/rainbowkit";
+// import VotingABI from "@/contract/Voting.json";
 
+// --- 1) Ganti dengan address kontrak Voting hasil deploy Foundry kamu ---
+const VOTING_CONTRACT_ADDRESS = process.env
+  .NEXT_PUBLIC_CONTRACT_ADDRESS as `0x${string}`;
+
+// --- 2) Tipe data Candidate (sesuai format backend) ---
 type Candidate = {
   sessionId: string;
   address: string;
@@ -13,117 +22,155 @@ type Candidate = {
   txHash: string;
 };
 
-export default function Home() {
+interface MainPageProps {
+  sessionId: string;
+}
+
+export default function MainPage({ sessionId }: MainPageProps) {
   const { address, isConnected } = useAccount();
-  const { connect, connectors } = useConnect();
-  const { disconnect } = useDisconnect();
-//   const { data: signer } = useSigner();
 
+  // --- State kandidat dari backend Next.js API ---
   const [candidates, setCandidates] = useState<Candidate[]>([]);
-  const [sessionId] = useState<string>("1"); // contoh hardcoded sesi 1
+  const [isFetching, setIsFetching] = useState<boolean>(false);
 
-  // Ambil daftar kandidat dari backend
-  useEffect(() => {
-    fetch(`/api/candidates?sessionId=${sessionId}`)
-      .then((res) => res.json())
-      .then((data) => {
-        setCandidates(data.candidates);
-      })
-      .catch((e) => console.error(e));
-  }, [sessionId]);
+  // --- Wagmi Read Contract: (opsional) bisa dipakai untuk fetch voteCount nanti ---
+  //    Contoh:
+  //    const { data: someCount } = useReadContract({
+  //      address: VOTING_CONTRACT_ADDRESS,
+  //      abi: VotingABI,
+  //      functionName: "getVoteCount",
+  //      args: [Number(sessionId), candidateAddress],
+  //    });
 
-  const votingContractAddress = "0xYourVotingContractAddressHere";
+  // --- Wagmi Write Contract: untuk panggil fungsi `vote(sessionId, candidateAddr)` ---
+  //    Kita tidak perlu `usePrepareContractWrite` karena langsung pakai `useWriteContract`.
+  //   const { writeContract, isPending } = useWriteContract({
+  //     address: VOTING_CONTRACT_ADDRESS,
+  //     abi: VotingABI.abi,
+  //     functionName: "vote",
+  //     // args di‐pass nanti dalam `writeContract({ args: [...] })`
+  //   });
 
-  // Fungsi untuk melakukan vote
-  const handleVote = async (candidateAddr: string) => {
-    // if (!signer) {
-    //   alert("Silakan connect wallet dulu");
-    //   return;
-    // }
-    try {
-    //   const tx = await signer.sendTransaction({
-    //     to: votingContractAddress,
-    //     data: new ethers.utils.Interface(VotingABI.abi).encodeFunctionData(
-    //       "vote",
-    //       [Number(sessionId), candidateAddr]
-    //     ),
-    //   });
-    //   console.log("Tx sent:", tx.hash);
-    //   await tx.wait();
-      console.log("Vote confirmed");
-      alert("Vote sukses!");
-    } catch (err: unknown) {
-      console.error("Error vote:", err);
-      if (err instanceof Error) {
-        alert("Gagal vote: " + err.message);
-      } else {
-        alert("Gagal vote: Terjadi kesalahan");
-      }
-    }
-  };
+  // --- Wagmi Transaction Receipt untuk memantau status transaksi terakhir ---
+  //   const { data: txReceipt, isLoading: isLoadingReceipt, isSuccess } =
+  //     useTransactionReceipt({
+  //       hash: txReceiptHash, // nanti kita simpan txHash ketika writeContract dijalankan
+  //     });
+
+  // Kita simpan txHash di state untuk dipakai di useTransactionReceipt
+  const [txReceiptHash, setTxReceiptHash] = useState<string>("");
+
+  // --- 3) Fetch kandidat dari backend API Next.js `/api/candidates` ---
+  //   useEffect(() => {
+  //     async function fetchCandidates() {
+  //       setIsFetching(true);
+  //       try {
+  //         const res = await fetch(`/api/candidates?sessionId=${sessionId}`);
+  //         const json = await res.json();
+  //         setCandidates(json.candidates || []);
+  //       } catch (err) {
+  //         console.error("Fetch candidates error:", err);
+  //       } finally {
+  //         setIsFetching(false);
+  //       }
+  //     }
+  //     fetchCandidates();
+  //   }, [sessionId, isSuccess]); // re‐fetch setelah ada vote yang sukses (opsional)
+
+  // --- 4) Handler Vote: panggil `writeContract` dengan argumen yang benar ---
+  //   const handleVote = async (candidateAddr: string) => {
+  //     if (!isConnected || !address) {
+  //       alert("🔒 Silakan connect wallet terlebih dahulu!");
+  //       return;
+  //     }
+  //     try {
+  //       // Kirim transaksi vote(sessionId, candidateAddr)
+  //       // Wagmi akan otomatis pakai signer dari wallet yang ter‐connect.
+  //       const { hash } = await writeContract({ args: [BigInt(sessionId), candidateAddr as `0x${string}`] });
+  //       setTxReceiptHash(hash);
+  //     } catch (err: any) {
+  //       console.error("Error on vote:", err);
+  //       alert("❌ Gagal mengirim vote: " + (err.message || String(err)));
+  //     }
+  //   };
 
   return (
-    <div className="min-h-screen bg-gray-50 py-8 px-4">
-      <div className="max-w-2xl mx-auto bg-white shadow-md rounded-lg p-6">
-        <h1 className="text-3xl font-bold text-gray-800 mb-6">
-          🗳️ Voting DApp
-        </h1>
-
-        {/* Connect / Disconnect Wallet */}
-        <div className="mb-8">
-          {isConnected ? (
-            <button
-              onClick={() => disconnect()}
-              className="px-4 py-2 bg-red-500 text-white rounded hover:bg-red-600 transition"
-            >
-              Disconnect ({address?.slice(0, 6)}...)
-            </button>
-          ) : (
-            <div className="space-x-2">
-              {connectors.map((c) => (
-                <button
-                  key={c.id}
-                  onClick={() => connect({ connector: c })}
-                  className="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600 transition"
-                >
-                  Connect {c.name}
-                </button>
-              ))}
-            </div>
-          )}
+    <main className="flex min-h-screen justify-center items-start bg-gray-100 p-8">
+      <div className="w-full max-w-xl bg-white rounded-2xl shadow-lg p-6">
+        {/* --- Header: Judul + Connect Button --- */}
+        <div className="flex justify-between items-center mb-6">
+          <h1 className="text-2xl font-semibold text-gray-800">
+            🗳️ Voting DApp
+          </h1>
+          <ConnectButton />
         </div>
 
-        <hr className="border-gray-300 mb-8" />
+        <hr className="border-gray-200 mb-6" />
 
-        <h2 className="text-xl font-semibold text-gray-700 mb-4">
-          Session #{sessionId}
-        </h2>
+        {/* --- Section: Tampilkan Session ID & Status Transaksi --- */}
+        <div className="mb-4">
+          <p className="text-lg text-gray-700">
+            <span className="font-medium">Session #{sessionId}</span>{" "}
+            {isConnected && address ? (
+              <span className="text-sm text-gray-500 font-mono">
+                Connected: {address.slice(0, 6)}...{address.slice(-4)}
+              </span>
+            ) : (
+              <span className="text-sm text-red-500">
+                Wallet belum connected
+              </span>
+            )}
+          </p>
+          {/* {txReceiptHash && (
+            <p className="text-sm text-gray-500 mt-1">
+              {isLoadingReceipt
+                ? "⌛ Menunggu konfirmasi transaksi..."
+                : isSuccess
+                ? "✅ Transaksi berhasil!"
+                : "❌ Transaksi gagal atau belum terkonfirmasi"}
+            </p>
+          )} */}
+        </div>
 
-        <ul className="space-y-4">
-          {candidates.map((cand) => (
-            <li
-              key={cand.address}
-              className="flex items-center justify-between bg-gray-100 rounded p-4"
-            >
-              <div>
-                <p className="font-medium text-gray-800">{cand.name}</p>
-                <p className="text-sm text-gray-500">{cand.address}</p>
-              </div>
-              <button
-                onClick={() => handleVote(cand.address)}
-                disabled={!isConnected}
-                className={`px-4 py-2 rounded text-white transition ${
-                  isConnected
-                    ? "bg-green-500 hover:bg-green-600"
-                    : "bg-gray-400 cursor-not-allowed"
-                }`}
+        {/* --- Section: Daftar Kandidat + Tombol Vote --- */}
+        {isFetching ? (
+          <p className="text-gray-500">Loading candidates…</p>
+        ) : candidates.length === 0 ? (
+          <p className="text-gray-500">Belum ada kandidat terdaftar.</p>
+        ) : (
+          <ul className="space-y-4">
+            {candidates.map((cand) => (
+              <li
+                key={cand.address}
+                className="flex justify-between items-center border rounded-lg p-4 hover:shadow-sm transition"
               >
-                Vote
-              </button>
-            </li>
-          ))}
-        </ul>
+                <div>
+                  <p className="text-lg font-medium text-gray-800">
+                    {cand.name}
+                  </p>
+                  <p className="text-sm text-gray-500 font-mono">
+                    {cand.address}
+                  </p>
+                </div>
+                <button
+                  //   onClick={() => handleVote(cand.address)}
+                  //   disabled={isPending || isLoadingReceipt}
+                  //   className={`px-4 py-2 rounded-lg text-white transition
+                  //     ${
+                  //       isPending || isLoadingReceipt
+                  //         ? "bg-gray-400 cursor-not-allowed"
+                  //         : "bg-green-500 hover:bg-green-600"
+                  //     }`}
+                  className={`px-4 py-2 rounded-lg text-white transition`}
+                >
+                  {/* {isPending || isLoadingReceipt ? "Voting…" : "Vote"} */}
+                  Voting
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
       </div>
-    </div>
+    </main>
   );
 }
