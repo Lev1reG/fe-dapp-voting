@@ -19,3 +19,12 @@ model Staff {
   wallet     String  @unique
   attendance Int
 }
+
+model Candidate {
+  id            String @id @default(auto()) @map("_id") @db.ObjectId
+  sessionId     String
+  candidateName String
+  candidateAddr String
+
+  @@unique([sessionId, candidateAddr])
+}
