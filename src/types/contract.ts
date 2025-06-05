@@ -1,5 +1,5 @@
 import { UseReadContractReturnType } from 'wagmi';
-import VotingABI from '@/app/contracts/Voting.json';
+import VotingABI from '@/contracts/Voting.json';
 
 // Contract data structures
 export interface VotingSession {
