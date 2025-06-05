@@ -7,6 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent } from "@/components/ui/card";
 import { toast } from "sonner";
+import ConnectWallet from "@/components/allPage/ConnectWallet";
 
 export default function AdminPage() {
   const [sessionId, setSessionId] = useState("");
@@ -35,7 +36,7 @@ export default function AdminPage() {
 
   return (
     <div className="max-w-2xl mx-auto space-y-6 py-10">
-      <h1 className="text-2xl font-bold">Admin Voting Panel</h1>
+      <ConnectWallet title={"Admin Voting DApp"} />
 
       <Card>
         <CardContent className="space-y-4 pt-6">

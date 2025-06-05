@@ -1,13 +1,11 @@
 "use client";
 
 import "@rainbow-me/rainbowkit/styles.css";
-import { useState } from "react";
+import { ReactNode } from "react";
 import { getDefaultConfig, RainbowKitProvider } from "@rainbow-me/rainbowkit";
 import { WagmiProvider } from "wagmi";
 import { monadTestnet } from "wagmi/chains";
 import { QueryClientProvider, QueryClient } from "@tanstack/react-query";
-
-import Voting from "./Voting";
 
 const queryClient = new QueryClient();
 
@@ -19,16 +17,11 @@ const config = getDefaultConfig({
   ssr: true,
 });
 
-export default function VotingLayout() {
-  // Kamu bisa simpan sessionId di sini (atau fetch dari route params)
-  const [sessionId] = useState<string>("1");
-
+export default function VotingLayout({ children }: { children: ReactNode }) {
   return (
     <WagmiProvider config={config}>
       <QueryClientProvider client={queryClient}>
-        <RainbowKitProvider>
-          <Voting sessionId={sessionId} />
-        </RainbowKitProvider>
+        <RainbowKitProvider>{children}</RainbowKitProvider>
       </QueryClientProvider>
     </WagmiProvider>
   );
