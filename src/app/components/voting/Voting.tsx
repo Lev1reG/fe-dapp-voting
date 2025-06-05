@@ -3,96 +3,185 @@
 import { useEffect, useState } from "react";
 import {
   useAccount,
-  //   useReadContract,
-  useWriteContract,
+  useContractRead,
+  useContractWrite,
   useTransactionReceipt,
 } from "wagmi";
 import { ConnectButton } from "@rainbow-me/rainbowkit";
-// import VotingABI from "@/contract/Voting.json";
+import VotingABI from "@/app/contracts/Voting.json";
 
-// --- 1) Ganti dengan address kontrak Voting hasil deploy Foundry kamu ---
+// --- Ganti dengan address kontrak Voting Anda (hasil deploy Foundry) ---
 const VOTING_CONTRACT_ADDRESS = process.env
   .NEXT_PUBLIC_CONTRACT_ADDRESS as `0x${string}`;
 
-// --- 2) Tipe data Candidate (sesuai format backend) ---
-type Candidate = {
-  sessionId: string;
-  address: string;
+// Struktur kandidat on‐chain sesuai ABI: setiap index sessionCandidates[sessionId][i]
+// mengandung { addr, name }
+type OnChainCandidate = {
+  addr: `0x${string}`;
   name: string;
-  txHash: string;
 };
 
 interface MainPageProps {
-  sessionId: string;
+  sessionId: string; // misal "1"
 }
 
 export default function MainPage({ sessionId }: MainPageProps) {
   const { address, isConnected } = useAccount();
 
-  // --- State kandidat dari backend Next.js API ---
-  const [candidates, setCandidates] = useState<Candidate[]>([]);
-  const [isFetching, setIsFetching] = useState<boolean>(false);
+  // 1. Simpan daftar kandidat on‐chain dan jumlah suara (voteCounts) masing‐masing
+  const [candidates, setCandidates] = useState<OnChainCandidate[]>([]);
+  const [voteCounts, setVoteCounts] = useState<Record<string, bigint>>({});
+  // voteCounts[candidateAddr] = jumlah suara
 
-  // --- Wagmi Read Contract: (opsional) bisa dipakai untuk fetch voteCount nanti ---
-  //    Contoh:
-  //    const { data: someCount } = useReadContract({
-  //      address: VOTING_CONTRACT_ADDRESS,
-  //      abi: VotingABI,
-  //      functionName: "getVoteCount",
-  //      args: [Number(sessionId), candidateAddress],
-  //    });
+  // 2. Status‐status pemilihan
+  const [isSessionOpen, setIsSessionOpen] = useState<boolean>(false);
+  const [hasUserVoted, setHasUserVoted] = useState<boolean>(false);
+  const [isUserEligible, setIsUserEligible] = useState<boolean>(false);
 
-  // --- Wagmi Write Contract: untuk panggil fungsi `vote(sessionId, candidateAddr)` ---
-  //    Kita tidak perlu `usePrepareContractWrite` karena langsung pakai `useWriteContract`.
-  //   const { writeContract, isPending } = useWriteContract({
-  //     address: VOTING_CONTRACT_ADDRESS,
-  //     abi: VotingABI.abi,
-  //     functionName: "vote",
-  //     // args di‐pass nanti dalam `writeContract({ args: [...] })`
-  //   });
+  // 3. Wagmi Read Contracts untuk memanggil fungsi‐fungsi view di Smart Contract
+  // 3a) getCandidates(sessionId) → mengembalikan (address[] addrs, string[] names)
+  const { data: onChainData, refetch: refetchCandidates } = useContractRead({
+    address: VOTING_CONTRACT_ADDRESS,
+    abi: VotingABI,
+    functionName: "getCandidates",
+    args: [BigInt(sessionId)],
+    watch: true, // agar otomatis update saat chain new block
+  });
 
-  // --- Wagmi Transaction Receipt untuk memantau status transaksi terakhir ---
-  //   const { data: txReceipt, isLoading: isLoadingReceipt, isSuccess } =
-  //     useTransactionReceipt({
-  //       hash: txReceiptHash, // nanti kita simpan txHash ketika writeContract dijalankan
-  //     });
+  // 3b) isVotingOpen(sessionId) → bool
+  const { data: openData, refetch: refetchOpen } = useContractRead({
+    address: VOTING_CONTRACT_ADDRESS,
+    abi: VotingABI,
+    functionName: "isVotingOpen",
+    args: [BigInt(sessionId)],
+    watch: true,
+  });
 
-  // Kita simpan txHash di state untuk dipakai di useTransactionReceipt
-  const [txReceiptHash, setTxReceiptHash] = useState<string>("");
+  // 3c) hasVoted(sessionId, user) → bool
+  const { data: votedData, refetch: refetchHasVoted } = useContractRead({
+    address: VOTING_CONTRACT_ADDRESS,
+    abi: VotingABI,
+    functionName: "hasVoted",
+    args: [BigInt(sessionId), address!],
+    enabled: isConnected && !!address, // hanya baca kalau wallet sudah connect
+    watch: true,
+  });
 
-  // --- 3) Fetch kandidat dari backend API Next.js `/api/candidates` ---
-  //   useEffect(() => {
-  //     async function fetchCandidates() {
-  //       setIsFetching(true);
-  //       try {
-  //         const res = await fetch(`/api/candidates?sessionId=${sessionId}`);
-  //         const json = await res.json();
-  //         setCandidates(json.candidates || []);
-  //       } catch (err) {
-  //         console.error("Fetch candidates error:", err);
-  //       } finally {
-  //         setIsFetching(false);
-  //       }
-  //     }
-  //     fetchCandidates();
-  //   }, [sessionId, isSuccess]); // re‐fetch setelah ada vote yang sukses (opsional)
+  // 3d) isEligible(sessionId, user) → bool
+  const { data: eligibleData, refetch: refetchEligible } = useContractRead({
+    address: VOTING_CONTRACT_ADDRESS,
+    abi: VotingABI,
+    functionName: "isEligible",
+    args: [BigInt(sessionId), address!],
+    enabled: isConnected && !!address,
+    watch: true,
+  });
 
-  // --- 4) Handler Vote: panggil `writeContract` dengan argumen yang benar ---
-  //   const handleVote = async (candidateAddr: string) => {
-  //     if (!isConnected || !address) {
-  //       alert("🔒 Silakan connect wallet terlebih dahulu!");
-  //       return;
-  //     }
-  //     try {
-  //       // Kirim transaksi vote(sessionId, candidateAddr)
-  //       // Wagmi akan otomatis pakai signer dari wallet yang ter‐connect.
-  //       const { hash } = await writeContract({ args: [BigInt(sessionId), candidateAddr as `0x${string}`] });
-  //       setTxReceiptHash(hash);
-  //     } catch (err: any) {
-  //       console.error("Error on vote:", err);
-  //       alert("❌ Gagal mengirim vote: " + (err.message || String(err)));
-  //     }
-  //   };
+  // 4. Wagmi Write Contract untuk memanggil fungsi vote(sessionId, candidateAddr)
+  const { write: voteWrite, isLoading: isVoting } = useContractWrite({
+    address: VOTING_CONTRACT_ADDRESS,
+    abi: VotingABI,
+    functionName: "vote",
+    args: [BigInt(sessionId), "0x0000000000000000000000000000000000000000"], // placeholder
+  });
+
+  // 5. Wagmi Transaction Receipt untuk memantau status transaksi paling baru
+  const [txHash, setTxHash] = useState<string>("");
+  const {
+    data: receiptData,
+    isLoading: isLoadingReceipt,
+    isSuccess: txSuccess,
+  } = useTransactionReceipt({
+    hash: txHash,
+  });
+
+  // 6. Set up side-effect ketika data onChainData (getCandidates) berubah
+  useEffect(() => {
+    if (!onChainData) return;
+    const [addrs, names] = onChainData as [Array<`0x${string}`>, string[]];
+
+    // Satukan ke Array<OnChainCandidate>
+    const merged: OnChainCandidate[] = addrs.map((addr, i) => ({
+      addr,
+      name: names[i],
+    }));
+    setCandidates(merged);
+
+    // Setelah daftar kandidat berubah, kita fetch voteCounts per kandidat
+    const fetchCounts = async () => {
+      const countsObj: Record<string, bigint> = {};
+      for (const cand of merged) {
+        const count: bigint = await refetchVoteCount?.({
+          args: [BigInt(sessionId), cand.addr],
+        }).then((res) => (res.data as bigint) ?? BigInt(0));
+        countsObj[cand.addr] = count;
+      }
+      setVoteCounts(countsObj);
+    };
+
+    // definisikan refetchVoteCount hook:
+    //  - tidak otomatis dijalankan, kita gunakan `useContractRead` dengan enabled false
+    //  - lalu panggil secara manual di atas
+    fetchCounts();
+  }, [onChainData]);
+
+  // 7. Hook untuk memanggil getVoteCount satu per satu (enabled: false → nanti dipanggil manual)
+  const { refetch: refetchVoteCount } = useContractRead({
+    address: VOTING_CONTRACT_ADDRESS,
+    abi: VotingABI,
+    functionName: "getVoteCount",
+    args: [BigInt(sessionId), "0x0000000000000000000000000000000000000000"], // placeholder
+    enabled: false,
+  });
+
+  // 8. Side-effect untuk mengupdate status voting (open/closed), hasVoted, isEligible
+  useEffect(() => {
+    if (typeof openData === "boolean") {
+      setIsSessionOpen(openData);
+    }
+  }, [openData]);
+
+  useEffect(() => {
+    if (typeof votedData === "boolean") {
+      setHasUserVoted(votedData);
+    }
+  }, [votedData]);
+
+  useEffect(() => {
+    if (typeof eligibleData === "boolean") {
+      setIsUserEligible(eligibleData);
+    }
+  }, [eligibleData]);
+
+  // 9. Handler ketika user menekan tombol "Vote" untuk kandidat tertentu
+  const handleVote = async (candidateAddr: string) => {
+    if (!isConnected || !address) {
+      alert("🔒 Silakan connect wallet terlebih dahulu!");
+      return;
+    }
+    if (!isSessionOpen) {
+      alert("⛔ Voting untuk sesi ini sudah ditutup.");
+      return;
+    }
+    if (hasUserVoted) {
+      alert("❌ Anda sudah pernah memilih di sesi ini.");
+      return;
+    }
+    if (!isUserEligible) {
+      alert("🚫 Anda tidak termasuk pemilih yang berhak.");
+      return;
+    }
+
+    try {
+      const { hash } = await voteWrite({
+        args: [BigInt(sessionId), candidateAddr as `0x${string}`],
+      });
+      setTxHash(hash);
+    } catch (err: any) {
+      console.error("Error saat memanggil vote():", err);
+      alert("❌ Gagal mengirim vote: " + (err.message || String(err)));
+    }
+  };
 
   return (
     <main className="flex min-h-screen justify-center items-start bg-gray-100 p-8">
@@ -107,7 +196,7 @@ export default function MainPage({ sessionId }: MainPageProps) {
 
         <hr className="border-gray-200 mb-6" />
 
-        {/* --- Section: Tampilkan Session ID & Status Transaksi --- */}
+        {/* --- Status Sesi & User --- */}
         <div className="mb-4">
           <p className="text-lg text-gray-700">
             <span className="font-medium">Session #{sessionId}</span>{" "}
@@ -117,23 +206,49 @@ export default function MainPage({ sessionId }: MainPageProps) {
               </span>
             ) : (
               <span className="text-sm text-red-500">
-                Wallet belum connected
+                Wallet belum terkoneksi
               </span>
             )}
           </p>
-          {/* {txReceiptHash && (
-            <p className="text-sm text-gray-500 mt-1">
+          <p className="text-sm mt-1">
+            Status Voting:{" "}
+            {isSessionOpen ? (
+              <span className="text-green-600 font-semibold">Open</span>
+            ) : (
+              <span className="text-red-600 font-semibold">Closed</span>
+            )}
+          </p>
+          {isConnected && (
+            <p className="text-sm">
+              {hasUserVoted ? (
+                <span className="text-yellow-800">✅ Anda sudah memilih</span>
+              ) : (
+                <span className="text-blue-700">Anda belum memilih</span>
+              )}
+            </p>
+          )}
+          {isConnected && (
+            <p className="text-sm">
+              {isUserEligible ? (
+                <span className="text-green-700">Anda eligible</span>
+              ) : (
+                <span className="text-red-700">Anda tidak eligible</span>
+              )}
+            </p>
+          )}
+          {txHash && (
+            <p className="text-sm text-gray-500 mt-2">
               {isLoadingReceipt
                 ? "⌛ Menunggu konfirmasi transaksi..."
-                : isSuccess
+                : txSuccess
                 ? "✅ Transaksi berhasil!"
-                : "❌ Transaksi gagal atau belum terkonfirmasi"}
+                : "❌ Transaksi gagal / belum terkonfirmasi"}
             </p>
-          )} */}
+          )}
         </div>
 
-        {/* --- Section: Daftar Kandidat + Tombol Vote --- */}
-        {isFetching ? (
+        {/* --- Daftar Kandidat dan Vote Button --- */}
+        {onChainData == null ? (
           <p className="text-gray-500">Loading candidates…</p>
         ) : candidates.length === 0 ? (
           <p className="text-gray-500">Belum ada kandidat terdaftar.</p>
@@ -141,30 +256,42 @@ export default function MainPage({ sessionId }: MainPageProps) {
           <ul className="space-y-4">
             {candidates.map((cand) => (
               <li
-                key={cand.address}
+                key={cand.addr}
                 className="flex justify-between items-center border rounded-lg p-4 hover:shadow-sm transition"
               >
                 <div>
                   <p className="text-lg font-medium text-gray-800">
                     {cand.name}
                   </p>
-                  <p className="text-sm text-gray-500 font-mono">
-                    {cand.address}
+                  <p className="text-sm text-gray-500 font-mono">{cand.addr}</p>
+                  <p className="text-sm text-purple-700 mt-1">
+                    Suara:{" "}
+                    {voteCounts[cand.addr] !== undefined
+                      ? voteCounts[cand.addr].toString()
+                      : "-"}
                   </p>
                 </div>
                 <button
-                  //   onClick={() => handleVote(cand.address)}
-                  //   disabled={isPending || isLoadingReceipt}
-                  //   className={`px-4 py-2 rounded-lg text-white transition
-                  //     ${
-                  //       isPending || isLoadingReceipt
-                  //         ? "bg-gray-400 cursor-not-allowed"
-                  //         : "bg-green-500 hover:bg-green-600"
-                  //     }`}
-                  className={`px-4 py-2 rounded-lg text-white transition`}
+                  onClick={() => handleVote(cand.addr)}
+                  disabled={
+                    isVoting ||
+                    isLoadingReceipt ||
+                    !isSessionOpen ||
+                    hasUserVoted ||
+                    !isUserEligible
+                  }
+                  className={`px-4 py-2 rounded-lg text-white transition 
+                    ${
+                      isVoting ||
+                      isLoadingReceipt ||
+                      !isSessionOpen ||
+                      hasUserVoted ||
+                      !isUserEligible
+                        ? "bg-gray-400 cursor-not-allowed"
+                        : "bg-green-500 hover:bg-green-600"
+                    }`}
                 >
-                  {/* {isPending || isLoadingReceipt ? "Voting…" : "Vote"} */}
-                  Voting
+                  {isVoting || isLoadingReceipt ? "Voting…" : "Vote"}
                 </button>
               </li>
             ))}
