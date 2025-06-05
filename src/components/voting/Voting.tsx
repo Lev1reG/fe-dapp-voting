@@ -1,20 +1,9 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import {
-  useAccount,
-  useContractRead,
-  useContractWrite,
-  useTransactionReceipt,
-} from "wagmi";
-
-import VotingABI from "@/contracts/Voting.json";
-
+import { useAccount } from "wagmi";
 import ConnectWallet from "@/components/allPage/ConnectWallet";
-
-// --- Ganti dengan address kontrak Voting Anda (hasil deploy Foundry) ---
-const VOTING_CONTRACT_ADDRESS = process.env
-  .NEXT_PUBLIC_CONTRACT_ADDRESS as `0x${string}`;
+import useVotingContract from "@/hooks/use-voting-contract";
 
 // Struktur kandidat on‐chain sesuai ABI: setiap index sessionCandidates[sessionId][i]
 // mengandung { addr, name }
@@ -28,7 +17,17 @@ interface MainPageProps {
 }
 
 export default function Voting({ sessionId }: MainPageProps) {
-  const { address, isConnected } = useAccount();
+  const votingContract = useVotingContract();
+  const {
+    currentAccount,
+    useGetCandidates,
+    useIsVotingOpen,
+    useHasVoted,
+    useIsEligible,
+    vote,
+    isPending,
+  } = votingContract;
+  const { isConnected } = useAccount();
 
   // 1. Simpan daftar kandidat on‐chain dan jumlah suara (voteCounts) masing‐masing
   const [candidates, setCandidates] = useState<OnChainCandidate[]>([]);
@@ -40,64 +39,13 @@ export default function Voting({ sessionId }: MainPageProps) {
   const [hasUserVoted, setHasUserVoted] = useState<boolean>(false);
   const [isUserEligible, setIsUserEligible] = useState<boolean>(false);
 
-  // 3. Wagmi Read Contracts untuk memanggil fungsi‐fungsi view di Smart Contract
-  // 3a) getCandidates(sessionId) → mengembalikan (address[] addrs, string[] names)
-  const { data: onChainData, refetch: refetchCandidates } = useContractRead({
-    address: VOTING_CONTRACT_ADDRESS,
-    abi: VotingABI,
-    functionName: "getCandidates",
-    args: [BigInt(sessionId)],
-    watch: true, // agar otomatis update saat chain new block
-  });
+  // 3. Hooks untuk membaca data dari smart contract
+  const { data: onChainData } = useGetCandidates(Number(sessionId));
+  const { data: openData } = useIsVotingOpen(Number(sessionId));
+  const { data: votedData } = useHasVoted(Number(sessionId));
+  const { data: eligibleData } = useIsEligible(Number(sessionId));
 
-  // 3b) isVotingOpen(sessionId) → bool
-  const { data: openData, refetch: refetchOpen } = useContractRead({
-    address: VOTING_CONTRACT_ADDRESS,
-    abi: VotingABI,
-    functionName: "isVotingOpen",
-    args: [BigInt(sessionId)],
-    watch: true,
-  });
-
-  // 3c) hasVoted(sessionId, user) → bool
-  const { data: votedData, refetch: refetchHasVoted } = useContractRead({
-    address: VOTING_CONTRACT_ADDRESS,
-    abi: VotingABI,
-    functionName: "hasVoted",
-    args: [BigInt(sessionId), address!],
-    enabled: isConnected && !!address, // hanya baca kalau wallet sudah connect
-    watch: true,
-  });
-
-  // 3d) isEligible(sessionId, user) → bool
-  const { data: eligibleData, refetch: refetchEligible } = useContractRead({
-    address: VOTING_CONTRACT_ADDRESS,
-    abi: VotingABI,
-    functionName: "isEligible",
-    args: [BigInt(sessionId), address!],
-    enabled: isConnected && !!address,
-    watch: true,
-  });
-
-  // 4. Wagmi Write Contract untuk memanggil fungsi vote(sessionId, candidateAddr)
-  const { write: voteWrite, isLoading: isVoting } = useContractWrite({
-    address: VOTING_CONTRACT_ADDRESS,
-    abi: VotingABI,
-    functionName: "vote",
-    args: [BigInt(sessionId), "0x0000000000000000000000000000000000000000"], // placeholder
-  });
-
-  // 5. Wagmi Transaction Receipt untuk memantau status transaksi paling baru
-  const [txHash, setTxHash] = useState<string>("");
-  const {
-    data: receiptData,
-    isLoading: isLoadingReceipt,
-    isSuccess: txSuccess,
-  } = useTransactionReceipt({
-    hash: txHash,
-  });
-
-  // 6. Set up side-effect ketika data onChainData (getCandidates) berubah
+  // 4. Set up side-effect ketika data onChainData (getCandidates) berubah
   useEffect(() => {
     if (!onChainData) return;
     const [addrs, names] = onChainData as [Array<`0x${string}`>, string[]];
@@ -113,30 +61,20 @@ export default function Voting({ sessionId }: MainPageProps) {
     const fetchCounts = async () => {
       const countsObj: Record<string, bigint> = {};
       for (const cand of merged) {
-        const count: bigint = await refetchVoteCount?.({
-          args: [BigInt(sessionId), cand.addr],
-        }).then((res) => (res.data as bigint) ?? BigInt(0));
-        countsObj[cand.addr] = count;
+        const { data: count } = await votingContract.useGetVoteCount(
+          Number(sessionId),
+          cand.addr
+        );
+        countsObj[cand.addr] =
+          count != null ? BigInt(count.toString()) : BigInt(0);
       }
       setVoteCounts(countsObj);
     };
 
-    // definisikan refetchVoteCount hook:
-    //  - tidak otomatis dijalankan, kita gunakan `useContractRead` dengan enabled false
-    //  - lalu panggil secara manual di atas
     fetchCounts();
-  }, [onChainData]);
+  }, [onChainData, sessionId, votingContract]);
 
-  // 7. Hook untuk memanggil getVoteCount satu per satu (enabled: false → nanti dipanggil manual)
-  const { refetch: refetchVoteCount } = useContractRead({
-    address: VOTING_CONTRACT_ADDRESS,
-    abi: VotingABI,
-    functionName: "getVoteCount",
-    args: [BigInt(sessionId), "0x0000000000000000000000000000000000000000"], // placeholder
-    enabled: false,
-  });
-
-  // 8. Side-effect untuk mengupdate status voting (open/closed), hasVoted, isEligible
+  // 5. Side-effect untuk mengupdate status voting (open/closed), hasVoted, isEligible
   useEffect(() => {
     if (typeof openData === "boolean") {
       setIsSessionOpen(openData);
@@ -155,9 +93,9 @@ export default function Voting({ sessionId }: MainPageProps) {
     }
   }, [eligibleData]);
 
-  // 9. Handler ketika user menekan tombol "Vote" untuk kandidat tertentu
+  // 6. Handler ketika user menekan tombol "Vote" untuk kandidat tertentu
   const handleVote = async (candidateAddr: string) => {
-    if (!isConnected || !address) {
+    if (!isConnected || !currentAccount) {
       alert("🔒 Silakan connect wallet terlebih dahulu!");
       return;
     }
@@ -175,13 +113,11 @@ export default function Voting({ sessionId }: MainPageProps) {
     }
 
     try {
-      const { hash } = await voteWrite({
-        args: [BigInt(sessionId), candidateAddr as `0x${string}`],
-      });
-      setTxHash(hash);
-    } catch (err: any) {
+      await vote(Number(sessionId), candidateAddr);
+    } catch (err: unknown) {
       console.error("Error saat memanggil vote():", err);
-      alert("❌ Gagal mengirim vote: " + (err.message || String(err)));
+      const errorMessage = err instanceof Error ? err.message : String(err);
+      alert("❌ Gagal mengirim vote: " + errorMessage);
     }
   };
 
@@ -197,9 +133,10 @@ export default function Voting({ sessionId }: MainPageProps) {
         <div className="mb-4">
           <p className="text-lg text-gray-700">
             <span className="font-medium">Session #{sessionId}</span>{" "}
-            {isConnected && address ? (
+            {isConnected && currentAccount ? (
               <span className="text-sm text-gray-500 font-mono">
-                Connected: {address.slice(0, 6)}...{address.slice(-4)}
+                Connected: {currentAccount.slice(0, 6)}...
+                {currentAccount.slice(-4)}
               </span>
             ) : (
               <span className="text-sm text-red-500">
@@ -233,15 +170,6 @@ export default function Voting({ sessionId }: MainPageProps) {
               )}
             </p>
           )}
-          {txHash && (
-            <p className="text-sm text-gray-500 mt-2">
-              {isLoadingReceipt
-                ? "⌛ Menunggu konfirmasi transaksi..."
-                : txSuccess
-                ? "✅ Transaksi berhasil!"
-                : "❌ Transaksi gagal / belum terkonfirmasi"}
-            </p>
-          )}
         </div>
 
         {/* --- Daftar Kandidat dan Vote Button --- */}
@@ -271,16 +199,14 @@ export default function Voting({ sessionId }: MainPageProps) {
                 <button
                   onClick={() => handleVote(cand.addr)}
                   disabled={
-                    isVoting ||
-                    isLoadingReceipt ||
+                    isPending ||
                     !isSessionOpen ||
                     hasUserVoted ||
                     !isUserEligible
                   }
                   className={`px-4 py-2 rounded-lg text-white transition 
                     ${
-                      isVoting ||
-                      isLoadingReceipt ||
+                      isPending ||
                       !isSessionOpen ||
                       hasUserVoted ||
                       !isUserEligible
@@ -288,7 +214,7 @@ export default function Voting({ sessionId }: MainPageProps) {
                         : "bg-green-500 hover:bg-green-600"
                     }`}
                 >
-                  {isVoting || isLoadingReceipt ? "Voting…" : "Vote"}
+                  {isPending ? "Voting…" : "Vote"}
                 </button>
               </li>
             ))}
