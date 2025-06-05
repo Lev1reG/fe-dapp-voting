@@ -25,7 +25,7 @@ interface MainPageProps {
   sessionId: string; // misal "1"
 }
 
-export default function MainPage({ sessionId }: MainPageProps) {
+export default function Voting({ sessionId }: MainPageProps) {
   const { address, isConnected } = useAccount();
 
   // 1. Simpan daftar kandidat on‐chain dan jumlah suara (voteCounts) masing‐masing
