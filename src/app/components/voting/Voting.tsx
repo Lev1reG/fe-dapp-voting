@@ -7,8 +7,10 @@ import {
   useContractWrite,
   useTransactionReceipt,
 } from "wagmi";
-import { ConnectButton } from "@rainbow-me/rainbowkit";
+
 import VotingABI from "@/app/contracts/Voting.json";
+
+import ConnectWallet from "../allPage/ConnectWallet";
 
 // --- Ganti dengan address kontrak Voting Anda (hasil deploy Foundry) ---
 const VOTING_CONTRACT_ADDRESS = process.env
@@ -187,12 +189,7 @@ export default function Voting({ sessionId }: MainPageProps) {
     <main className="flex min-h-screen justify-center items-start bg-gray-100 p-8">
       <div className="w-full max-w-xl bg-white rounded-2xl shadow-lg p-6">
         {/* --- Header: Judul + Connect Button --- */}
-        <div className="flex justify-between items-center mb-6">
-          <h1 className="text-2xl font-semibold text-gray-800">
-            🗳️ Voting DApp
-          </h1>
-          <ConnectButton />
-        </div>
+        <ConnectWallet title={"Voting DApp"} />
 
         <hr className="border-gray-200 mb-6" />
 
