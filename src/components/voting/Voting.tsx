@@ -4,6 +4,9 @@ import { useEffect, useRef, useState } from "react";
 import { useAccount } from "wagmi";
 import ConnectWallet from "@/components/allPage/ConnectWallet";
 import useVotingContract from "@/hooks/use-voting-contract";
+import { Card, CardContent } from "../ui/card";
+import { Label } from "@radix-ui/react-label";
+import { Input } from "@/components/ui/input";
 
 // Struktur kandidat on‐chain sesuai ABI: setiap index sessionCandidates[sessionId][i]
 // mengandung { addr, name }
@@ -12,12 +15,9 @@ type OnChainCandidate = {
   name: string;
 };
 
-interface MainPageProps {
-  sessionId: string; // misal "1"
-}
-
-export default function Voting({ sessionId }: MainPageProps) {
+export default function Voting() {
   const votingContract = useVotingContract();
+  const [sessionId, setSessionId] = useState<string>("1");
   const {
     currentAccount,
     useGetCandidates,
@@ -153,6 +153,18 @@ export default function Voting({ sessionId }: MainPageProps) {
       <div className="w-full max-w-xl bg-white rounded-2xl shadow-lg p-6">
         {/* --- Header: Judul + Connect Button --- */}
         <ConnectWallet title={"Voting DApp"} />
+
+        <Card>
+          <CardContent className="space-y-4 pt-6">
+            <Label>Session ID</Label>
+            <Input
+              value={sessionId}
+              onChange={(e) => setSessionId(e.target.value)}
+              type="number"
+              placeholder="Enter numeric ID for the session"
+            />
+          </CardContent>
+        </Card>
 
         <hr className="border-gray-200 mb-6" />
 
