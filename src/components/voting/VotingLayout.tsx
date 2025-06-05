@@ -4,7 +4,7 @@ import "@rainbow-me/rainbowkit/styles.css";
 import { ReactNode } from "react";
 import { getDefaultConfig, RainbowKitProvider } from "@rainbow-me/rainbowkit";
 import { WagmiProvider } from "wagmi";
-import { monadTestnet } from "wagmi/chains";
+import { sepolia } from "wagmi/chains";
 import { QueryClientProvider, QueryClient } from "@tanstack/react-query";
 
 const queryClient = new QueryClient();
@@ -13,7 +13,7 @@ const queryClient = new QueryClient();
 const config = getDefaultConfig({
   appName: "Voting DApp",
   projectId: "YOUR_PROJECT_ID", // ← ganti dengan Project ID mu
-  chains: [monadTestnet],
+  chains: [sepolia],
   ssr: true,
 });
 
