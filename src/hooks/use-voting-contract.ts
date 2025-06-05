@@ -1,9 +1,11 @@
 import { useState, useEffect } from 'react';
 import { useReadContract, useWriteContract, useAccount } from 'wagmi';
-import VotingABI from '../contracts/Voting.json';
+import VotingABI from '@/contracts/Voting.json';
 import { VotingContractHook } from '@/types/contract';
 
-export function useVotingContract(contractAddress: string): VotingContractHook {
+export function useVotingContract(): VotingContractHook {
+  const contractAddress = process.env.NEXT_PUBLIC_CONTRACT_ADDRESS;
+
   const { address: currentAccount } = useAccount();
   const [isAdmin, setIsAdmin] = useState<boolean>(false);
   

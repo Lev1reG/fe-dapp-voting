@@ -8,7 +8,7 @@ import {
   useTransactionReceipt,
 } from "wagmi";
 import { ConnectButton } from "@rainbow-me/rainbowkit";
-import VotingABI from "@/app/contracts/Voting.json";
+import VotingABI from "@/contracts/Voting.json";
 
 // --- Ganti dengan address kontrak Voting Anda (hasil deploy Foundry) ---
 const VOTING_CONTRACT_ADDRESS = process.env
