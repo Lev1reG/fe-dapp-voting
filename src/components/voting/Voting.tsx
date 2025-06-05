@@ -7,6 +7,8 @@ import useVotingContract from "@/hooks/use-voting-contract";
 import { Card, CardContent } from "../ui/card";
 import { Label } from "@radix-ui/react-label";
 import { Input } from "@/components/ui/input";
+import { toast } from "sonner";
+import CandidateItem from "./CandidateItem";
 
 // Struktur kandidat on‐chain sesuai ABI: setiap index sessionCandidates[sessionId][i]
 // mengandung { addr, name }
@@ -115,6 +117,7 @@ export default function Voting() {
   }, [votedData]);
 
   useEffect(() => {
+    console.log("Eligible data:", eligibleData);
     if (typeof eligibleData === "boolean") {
       setIsUserEligible(eligibleData);
     }
@@ -123,28 +126,29 @@ export default function Voting() {
   // 6. Handler ketika user menekan tombol "Vote" untuk kandidat tertentu
   const handleVote = async (candidateAddr: string) => {
     if (!isConnected || !currentAccount) {
-      alert("🔒 Silakan connect wallet terlebih dahulu!");
+      toast("🔒 Silakan connect wallet terlebih dahulu!");
       return;
     }
     if (!isSessionOpen) {
-      alert("⛔ Voting untuk sesi ini sudah ditutup.");
+      toast("⛔ Voting untuk sesi ini sudah ditutup.");
       return;
     }
     if (hasUserVoted) {
-      alert("❌ Anda sudah pernah memilih di sesi ini.");
+      toast("❌ Anda sudah pernah memilih di sesi ini.");
       return;
     }
     if (!isUserEligible) {
-      alert("🚫 Anda tidak termasuk pemilih yang berhak.");
+      toast("🚫 Anda tidak termasuk pemilih yang berhak.");
       return;
     }
 
     try {
       await vote(Number(sessionId), candidateAddr);
+      toast("✅ Vote berhasil dikirim!");
     } catch (err: unknown) {
       console.error("Error saat memanggil vote():", err);
       const errorMessage = err instanceof Error ? err.message : String(err);
-      alert("❌ Gagal mengirim vote: " + errorMessage);
+      toast("❌ Gagal mengirim vote: " + errorMessage);
     }
   };
 
@@ -219,43 +223,16 @@ export default function Voting() {
         ) : (
           <ul className="space-y-4">
             {candidates.map((cand) => (
-              <li
+              <CandidateItem
                 key={cand.addr}
-                className="flex justify-between items-center border rounded-lg p-4 hover:shadow-sm transition"
-              >
-                <div>
-                  <p className="text-lg font-medium text-gray-800">
-                    {cand.name}
-                  </p>
-                  <p className="text-sm text-gray-500 font-mono">{cand.addr}</p>
-                  <p className="text-sm text-purple-700 mt-1">
-                    Suara:{" "}
-                    {voteCounts[cand.addr] !== undefined
-                      ? voteCounts[cand.addr].toString()
-                      : "-"}
-                  </p>
-                </div>
-                <button
-                  onClick={() => handleVote(cand.addr)}
-                  disabled={
-                    isPending ||
-                    !isSessionOpen ||
-                    hasUserVoted ||
-                    !isUserEligible
-                  }
-                  className={`px-4 py-2 rounded-lg text-white transition 
-                    ${
-                      isPending ||
-                      !isSessionOpen ||
-                      hasUserVoted ||
-                      !isUserEligible
-                        ? "bg-gray-400 cursor-not-allowed"
-                        : "bg-green-500 hover:bg-green-600"
-                    }`}
-                >
-                  {isPending ? "Voting…" : "Vote"}
-                </button>
-              </li>
+                candidate={cand}
+                sessionId={Number(sessionId)}
+                isDisabled={
+                  isPending || !isSessionOpen || hasUserVoted || !isUserEligible
+                }
+                isPending={isPending}
+                onVote={handleVote}
+              />
             ))}
           </ul>
         )}
