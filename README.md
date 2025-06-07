@@ -1,7 +1,7 @@
 # fe-dapp-voting
 
 > 🌐 The frontend for System DApp Voting — on-chain, modular, and verifiable voting platform. <br />
-> Try it live at [https://smart-voting-dapp.vercel.app](https://smart-voting-dapp.vercel.app)
+> Try it live at h[https://smart-voting-dapp.vercel.app](https://smart-voting-dapp.vercel.app)
 
 ## ⚙️ Getting Started
 
@@ -41,7 +41,7 @@ Browse active and upcoming voting sessions using session id. Eligibility and sta
 View candidate names and addresses for each session.
 
 ### 4. Vote
-    If eligible, cast your vote (on-chain transaction).
+If eligible, cast your vote (on-chain transaction).
 
 ### 5. Results
 See vote counts per candidate and current session winner in real time.
