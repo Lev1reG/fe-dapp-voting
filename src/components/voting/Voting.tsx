@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { useAccount } from "wagmi";
 import ConnectWallet from "@/components/allPage/ConnectWallet";
 import useVotingContract from "@/hooks/use-voting-contract";
@@ -10,8 +10,7 @@ import { Input } from "@/components/ui/input";
 import { toast } from "sonner";
 import CandidateItem from "./CandidateItem";
 
-// Struktur kandidat on‐chain sesuai ABI: setiap index sessionCandidates[sessionId][i]
-// mengandung { addr, name }
+// Struktur kandidat on‐chain sesuai ABI
 type OnChainCandidate = {
   addr: `0x${string}`;
   name: string;
@@ -31,10 +30,8 @@ export default function Voting() {
   } = votingContract;
   const { isConnected } = useAccount();
 
-  // 1. Simpan daftar kandidat on‐chain dan jumlah suara (voteCounts) masing‐masing
+  // 1. State for candidates only - removed voteCounts state
   const [candidates, setCandidates] = useState<OnChainCandidate[]>([]);
-  const [voteCounts, setVoteCounts] = useState<Record<string, bigint>>({});
-  // voteCounts[candidateAddr] = jumlah suara
 
   // 2. Status‐status pemilihan
   const [isSessionOpen, setIsSessionOpen] = useState<boolean>(false);
@@ -47,9 +44,6 @@ export default function Voting() {
   const { data: votedData } = useHasVoted(Number(sessionId));
   const { data: eligibleData } = useIsEligible(Number(sessionId));
 
-  // Ref to track whether we already fetched votes for these candidates
-  const fetchedRef = useRef<boolean>(false);
-
   // 4. Set up side-effect ketika data onChainData (getCandidates) berubah
   useEffect(() => {
     if (!onChainData) return;
@@ -61,47 +55,7 @@ export default function Voting() {
       name: names[i],
     }));
     setCandidates(merged);
-
-    // Reset the fetched flag when candidates change
-    fetchedRef.current = false;
   }, [onChainData]);
-
-  // Separate useEffect just for vote counting
-  useEffect(() => {
-    // Only fetch once per candidate list change
-    if (candidates.length === 0 || fetchedRef.current) return;
-
-    // Mark as fetched to prevent infinite loop
-    fetchedRef.current = true;
-
-    // Create a controller to allow cancellation
-    const controller = new AbortController();
-
-    // Using a regular function without hooks inside
-    const fetchVoteCountsManually = async () => {
-      // Use any standard method (API call, contract method) that doesn't involve hooks
-      // For example, make API calls to your backend that interfaces with your contract
-
-      const newVoteCounts: Record<string, bigint> = {};
-
-      // Populate vote counts from somewhere else or use defaults
-      candidates.forEach((cand) => {
-        // Set a default value temporarily
-        newVoteCounts[cand.addr] = BigInt(0);
-      });
-
-      // Only update state if not aborted
-      if (!controller.signal.aborted) {
-        setVoteCounts(newVoteCounts);
-      }
-    };
-
-    fetchVoteCountsManually();
-
-    return () => {
-      controller.abort();
-    };
-  }, [candidates]);
 
   // 5. Side-effect untuk mengupdate status voting (open/closed), hasVoted, isEligible
   useEffect(() => {
